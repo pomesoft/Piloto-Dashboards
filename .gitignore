@@ -179,3 +179,10 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+/.chart-data-6COKf3
+/.chart-data-dh1hTL
+/.chart-data-KDxXTt
+/.chart-data-YGVXDI
+/.presentacion-build
+/entregables
+/output

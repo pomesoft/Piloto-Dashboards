@@ -22,7 +22,13 @@ def cards(values,currency,caption):
                 st.caption(caption+' · '+('proporción' if is_pct else ('cantidad' if count else currency)))
 
 def table(df,key,private=False):
-    reveal=st.checkbox('Mostrar identificadores personales en este detalle',key=key+'_pii') if private else False
+    policy=st.session_state.get('_access_policy')
+    if private and policy is not None and not policy.detail:
+        st.info('No tienes permiso para consultar registros de detalle.')
+        return
+    allowed=policy is None or policy.personal
+    reveal=st.checkbox('Mostrar identificadores personales en este detalle',key=key+'_pii',disabled=not allowed) if private else False
+    reveal=bool(reveal and allowed)
     visible=df.copy()
     if not reveal:
         visible=visible.drop(columns=[c for c in visible if c in PRIVATE],errors='ignore')

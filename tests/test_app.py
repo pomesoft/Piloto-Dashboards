@@ -6,6 +6,7 @@ from datetime import date
 from unittest.mock import patch
 from streamlit.delta_generator import DeltaGenerator
 from tests.test_core import FILES
+from core.access import AccessPolicy
 
 @pytest.mark.parametrize('page',['Resumen','Colocación','Cobranzas','Cartera','Proyección y morosidad','Calidad y conciliación','Diccionario de métricas','Detalle de Universo'])
 def test_pages_without_sources(page):
@@ -27,7 +28,9 @@ def test_real_sources_all_pages(kinds):
         uploads['upload_'+kind]=f
     def uploader(*args,**kwargs):
         return uploads.get(kwargs.get('key'))
-    with patch.object(DeltaGenerator,'file_uploader',uploader),patch('streamlit.file_uploader',uploader):
+    # Este caso verifica la visualización autorizada; el acceso predeterminado
+    # sin permiso personal se prueba por separado en test_chat_ui.py.
+    with patch.object(DeltaGenerator,'file_uploader',uploader),patch('streamlit.file_uploader',uploader),patch('core.access.policy_from_settings',return_value=AccessPolicy(personal=True)):
         at=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=45)
         at.session_state['declare_cutoff']=True
         # Fecha SOLO para probar UI; no se guarda como supuesto de los archivos.

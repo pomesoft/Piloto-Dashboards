@@ -50,18 +50,39 @@ def loaded_app():
 def chart_specs(at):
     return [json.loads(c.proto.spec) for c in at.get('plotly_chart')]
 
+def test_management_questions_open_in_main_panel_below_title():
+    at=AppTest.from_file(Path(__file__).resolve().parents[1]/'app.py',default_timeout=30).run()
+    assert not at.exception
+    assert not at.main.table
+    at.sidebar.toggle(key='show_management_questions').set_value(True).run()
+    assert not at.exception
+    pd.testing.assert_frame_equal(at.main.table[0].value,QUESTIONS)
+    assert len(at.sidebar.table)==1
+    elements=list(at.main)
+    title_index=next(i for i,e in enumerate(elements) if e.type=='title')
+    assert elements[title_index+1].value=='Preguntas que responde el dashboard'
+    assert elements[title_index+2].type=='table'
+    at.sidebar.radio[0].set_value('Cobranzas').run()
+    assert not at.exception
+    pd.testing.assert_frame_equal(at.main.table[0].value,QUESTIONS)
+    at.sidebar.toggle(key='show_management_questions').set_value(False).run()
+    assert not at.exception
+    assert not at.main.table
+
+
 def test_navigation_universe_and_requested_help():
     with loaded_app() as at:
         assert not at.exception
         assert at.sidebar.radio[0].options[-1]=='Detalle de Universo'
         assert [e.label for e in at.sidebar.expander if e.label in (
-            'Carga de archivos y filtros','Preguntas que responde el dashboard','Detalle de las vistas'
-        )]==['Carga de archivos y filtros','Preguntas que responde el dashboard','Detalle de las vistas']
+            'Carga de archivos y filtros','Detalle de las vistas'
+        )]==['Carga de archivos y filtros','Detalle de las vistas']
+        assert at.sidebar.toggle(key='show_management_questions').label=='Preguntas que responde el dashboard'
         assert at.sidebar.button(key='reset_filters')
-        assert len(at.sidebar.table)==2
+        assert len(at.sidebar.table)==1
         assert not at.sidebar.number_input and not at.sidebar.text_area
         assert len(QUESTIONS)==5 and len(VIEWS)==8
-        assert len(at.table)==2
+        assert len(at.table)==1
         assert not any('Universo:' in e.value for e in at.info)
         assert not any('Parámetros originales' in e.label for e in at.expander)
         at.sidebar.radio[0].set_value('Detalle de Universo').run()

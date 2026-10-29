@@ -1,5 +1,7 @@
 """Presentación de fuentes agregadas independientes."""
 from hashlib import sha256
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from zipfile import BadZipFile
 from openpyxl.utils.exceptions import InvalidFileException
 import pandas as pd
@@ -11,14 +13,16 @@ from .normalization import label,safe_csv
 from .presentation import cards,table,fmt
 
 @st.cache_data(show_spinner='Leyendo reporte gerencial…',max_entries=8,ttl=3600)
-def cached_management(content,name,kind):
+def cached_management(content,name,kind,session_id='legacy'):
     return read_management(content,name,kind)
 
-def load_management(tolerance):
+def load_management(tolerance,policy=None):
     sources={}
     with st.expander('Reportes gerenciales y proyección',expanded=False):
         st.caption('Fuentes agregadas independientes · ARS fijo')
         for kind,name in MANAGEMENT_NAMES.items():
+            if policy is not None and (not policy.permits(kind) or policy.scoped):
+                continue
             upload=st.file_uploader(name,type=['xlsx'],key='upload_'+kind)
             if upload is None:
                 continue
@@ -30,7 +34,9 @@ def load_management(tolerance):
                         if key.startswith('f_'+kind+'_'):
                             del st.session_state[key]
                 st.session_state['source_hash_'+kind]=fingerprint
-                r=cached_management(upload.getvalue(),upload.name,kind)
+                if previous!=fingerprint:
+                    st.session_state['source_loaded_'+kind]=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).isoformat(timespec='seconds')
+                r=cached_management(upload.getvalue(),upload.name,kind,st.session_state.get('_source_session','local'))
                 d,q=validate_management(r,tolerance)
                 selected=d[d.incluido]
                 if d.hoja.nunique()>1:

@@ -5,6 +5,9 @@ from hashlib import sha256
 from io import BytesIO
 from zipfile import ZipFile,ZIP_DEFLATED
 from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from uuid import uuid4
 import pandas as pd
 import streamlit as st
 from core.reader import read_report
@@ -13,16 +16,23 @@ from core.normalization import label,parse_date,safe_csv
 from core.metrics import metrics,dictionary,total,ratio
 from core.presentation import cards,table,filters,bars,trend,comparison,fmt
 from core.management import management_dictionary,MANAGEMENT_NAMES
-from core.interface import PAGES,management_help,quality_configuration,short_reference,show_universe
+from core.interface import PAGES,QUESTIONS,management_help,quality_configuration,short_reference,show_universe
 from core.management_ui import (load_management,show_management,show_availability,
                                 show_management_quality,add_management_to_archive)
+from core.access import setup_access, scoped_report
+from core.chat_ui import show_chat
 
 st.set_page_config(page_title='Gestión de cartera',page_icon='📊',layout='wide')
+access_policy=setup_access(st)
+st.session_state.setdefault('_source_session',uuid4().hex)
 st.title('Gestión de préstamos y cobranzas')
+if st.session_state.get('show_management_questions',False):
+    st.subheader('Preguntas que responde el dashboard')
+    st.table(QUESTIONS,alt='Cinco preguntas de gestión y las vistas donde consultarlas')
 st.caption('Panel operativo · fuentes independientes · procesamiento local en memoria')
 
 @st.cache_data(show_spinner='Leyendo y validando estructura…',max_entries=6,ttl=3600)
-def cached_read(content,name,kind):
+def cached_read(content,name,kind,session_id):
     return read_report(content,name,kind)
 
 def reset():
@@ -39,6 +49,8 @@ with st.sidebar.expander('Carga de archivos y filtros',expanded=False):
     st.caption('Archivos XLSX · Moneda: ARS fijo')
     st.button('Restablecer filtros',on_click=reset,key='reset_filters')
     for kind,name in names.items():
+        if not access_policy.permits(kind):
+            continue
         upload=st.file_uploader(name,type=['xlsx'],key='upload_'+kind)
         if upload is None:
             continue
@@ -50,7 +62,10 @@ with st.sidebar.expander('Carga de archivos y filtros',expanded=False):
                     if state_key.startswith('f_'+kind+'_') or (kind=='cartera' and state_key in ('declare_cutoff','cutoff_cartera')):
                         del st.session_state[state_key]
             st.session_state['source_hash_'+kind]=fingerprint
-            report=cached_read(upload.getvalue(),upload.name,kind)
+            if previous!=fingerprint:
+                st.session_state['source_loaded_'+kind]=datetime.now(ZoneInfo('America/Argentina/Buenos_Aires')).isoformat(timespec='seconds')
+            original_report=cached_read(upload.getvalue(),upload.name,kind,st.session_state['_source_session'])
+            report=scoped_report(original_report,access_policy)
             reports[kind]=report
             with st.expander('Corte de cartera') if kind=='cartera' else nullcontext():
                 currency='ARS'
@@ -68,8 +83,11 @@ with st.sidebar.expander('Carga de archivos y filtros',expanded=False):
                         if confirm and selected:
                             cutoff=selected; declared=True
                 config[kind]={'moneda':currency,'corte':cutoff,'declarado':declared}
-            d,q=validate(report,am,bm,tolerance)
-            all_data[kind]=d; issues[kind]=q; controls[kind]=reconcile(report,tolerance)
+            d,q=validate(original_report,am,bm,tolerance)
+            d=access_policy.restrict(d,kind)
+            if access_policy.scoped:
+                q=q.merge(d[['hoja','fila']].drop_duplicates(),on=['hoja','fila'],how='inner')
+            all_data[kind]=d; issues[kind]=q; controls[kind]=pd.DataFrame() if access_policy.scoped else reconcile(report,tolerance)
             filtered,period=filters(d,kind,report)
             views[kind]=filtered[filtered.incluido]; periods[kind]=period
         except Exception as exc:
@@ -77,7 +95,7 @@ with st.sidebar.expander('Carga de archivos y filtros',expanded=False):
             st.error(f'{name}: no se pudo procesar. {type(exc).__name__}: {exc}')
             reports.pop(kind,None)
 
-    management=load_management(tolerance)
+    management=load_management(tolerance,access_policy)
 
 with st.sidebar:
     management_help()
@@ -178,6 +196,9 @@ elif page=='Proyección y morosidad':
         show_management(management[chosen],chosen)
     show_availability(management)
 elif page=='Calidad y conciliación':
+    if not access_policy.audit:
+        st.info('No tienes permiso para consultar auditoría y conciliaciones.')
+        st.stop()
     st.subheader('Calidad y conciliación')
     st.caption('Conciliación contra detalles originales completos, antes de filtros y exclusiones de negocio. Cada control se compara por separado con su hoja y nivel. Las métricas usan solo registros incluidos.')
     if reports or management:
@@ -220,3 +241,6 @@ elif page=='Diccionario de métricas':
 
 elif page=='Detalle de Universo':
     show_universe(reports,names,config,views,periods,management)
+
+show_chat(reports,all_data,periods,config,management,access_policy,
+          {'tolerance':tolerance,'anulado':am,'bonif':bm})

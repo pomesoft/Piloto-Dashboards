@@ -1,5 +1,88 @@
 # Gestión de préstamos y cobranzas
 
+## Chat analítico
+
+El panel **Consultar los datos**, al pie del área principal, permite consultar en
+español las fuentes cargadas. Usa LangChain `create_agent` y OpenAI Responses con
+`gpt-5.5` por defecto. Las funciones del servidor realizan los cálculos con las
+métricas existentes; no se ejecuta SQL ni código generado. El chat no modifica
+registros ni archivos cargados.
+
+Instalar las dependencias de `requirements.txt` en el entorno del proyecto. La
+clave se obtiene de `OPENAI_API_KEY` o de `[chat].api_key` en
+`.streamlit/secrets.toml`. El modelo se puede cambiar con `OPENAI_MODEL` o
+`[chat].model`; no hay sustitución automática si la cuenta no tiene acceso.
+La configuración de ejemplo está en `.streamlit/secrets.example.toml`. El archivo
+real de secretos está excluido de Git. Nunca introducir claves en el chat.
+
+Por defecto se conservan los filtros de cada fuente. Un período explícito cambia
+el alcance de esa consulta sin cambiar los filtros visuales. Un filtro
+contradictorio requiere aclaración. Las selecciones que abren registros de un
+gráfico no modifican los indicadores ni se heredan como filtros globales.
+Reemplazar archivos, filtros, permisos o reglas inicia una conversación nueva.
+El historial y las referencias personales viven solo en la sesión, vencen a los
+30 minutos de inactividad y se pueden borrar con **Nueva conversación**.
+
+Ejemplos: “¿Cuántos préstamos del plan 106 tenemos colocados?”, “¿Qué capital
+colocamos por plan este mes?”, “¿Cómo evolucionó el capital colocado respecto del
+mes anterior?”, “¿Y de esos cuántos están vigentes?”. El panel muestra fuente,
+filtros, período, corte, fecha de carga, cobertura y limitaciones. La fecha de
+carga no se presenta como actualización del sistema de origen.
+
+“Colocados” usa la definición existente **Préstamos otorgados**: claves distintas
+de entidad y préstamo de registros incluidos, tanto Vigente como Cancelado salvo
+filtro explícito. “Monto colocado” usa **Capital colocado**; el monto contractual
+es otra métrica. No se deduce vigencia histórica o DNI a partir de saldo o CUIL.
+Los préstamos por Documento se consultan solo en Préstamos Detalle; no se infiere
+un padrón maestro ni se afirma inexistencia fuera de los archivos. Si el documento
+corresponde a varios clientes, se solicita acotar o confirmar el conjunto.
+
+### Acceso y privacidad
+
+El modo predeterminado es **local**, restringido a loopback. Permite agregados,
+detalle sin identificadores y auditoría. Las consultas por Documento y la
+visualización/exportación de datos personales están bloqueadas por defecto,
+incluso si se manipula la casilla de la interfaz. Para habilitarlas en un piloto
+local autorizado, configurar `[access.local] personal = true` en el servidor.
+Esa decisión no se puede tomar desde el chat.
+
+Para uso compartido, configurar `[access] mode = "oidc"`, el proveedor `[auth]` de
+Streamlit y las políticas `[access.users."issuer|sub"]` del ejemplo. Usuarios no
+registrados quedan denegados. Los alcances `sources`, `entities` y `branches`, y
+los permisos `personal`, `detail` y `audit`, se aplican en servidor al dashboard,
+descargas y herramientas. Las fuentes sin dimensiones suficientes para aplicar
+un alcance parcial se bloquean; no se reparten agregados por inferencia. Los
+controles originales de toda la población se ocultan a usuarios con alcance
+parcial. OIDC necesita completar datos reales del proveedor antes del despliegue.
+
+Los cachés de lectura incluyen una clave de sesión. Los agentes y referencias
+privadas no se cachean globalmente. Los documentos numéricos largos se reemplazan
+por referencias opacas antes de enviar preguntas a OpenAI. Las filas de detalle
+se muestran localmente y no se envían al modelo; las consultas agregadas envían
+solo resultados y metadatos necesarios. El texto libre de las preguntas se envía
+al proveedor: evitar incluir nombres u otros datos personales innecesarios.
+El tracing de LangSmith está deshabilitado en las llamadas del chat; no se
+registran prompts, documentos ni errores externos con sus argumentos. Los
+registros se tratan como datos sin autoridad para dar instrucciones.
+
+El chat limita longitud de pregunta, llamadas al modelo, herramientas, grupos y
+páginas de detalle. Un error de OpenAI no muestra resultados parciales como una
+respuesta completa. Se distinguen cero, resultado vacío, fuente faltante,
+importe incompleto y acceso denegado. Las definiciones se recuperan del
+diccionario sin embeddings ni infraestructura vectorial.
+
+### Verificación del chat
+
+`tests/test_chat_queries.py` compara consultas con cálculos directos, claves
+distintas y métricas del dashboard. `tests/test_chat_agent.py` ejecuta el agente
+con un modelo simulado sin red. `tests/test_chat_ui.py` prueba envío, seguimiento,
+restablecimiento, errores y permisos con AppTest y fuentes sintéticas aisladas.
+Las pruebas sintéticas no se muestran como datos reales de la aplicación.
+
+Se verificaron además llamadas reales a GPT-5.5 para plan 106, DNI y seguimiento,
+con una muestra sintética mínima. No se enviaron reportes reales para esas comprobaciones. La configuración OIDC y sus
+permisos deben verificarse contra el proveedor elegido antes del uso multiusuario.
+
 Aplicación local para gerencia y operaciones. Permite cargar independientemente siete tipos de reporte XLSX: tres de detalle y cuatro agregados gerenciales. Incluye colocación, cobranzas, cartera, proyección y morosidad, calidad y diccionario. La interfaz está en español. Los archivos originales no se modifican y no se copian al proyecto.
 
 ## Instalación y ejecución
@@ -78,7 +161,7 @@ En Cartera se comprueba también Otorgado − Cobrado − Saldo por préstamo en
 
 El procesamiento se realiza localmente en memoria. Los cachés de lectura no persisten en disco, usan el contenido completo, nombre y tipo como clave, tienen máximo de seis entradas de detalle y ocho gerenciales y vencen en una hora. Validaciones y métricas se recalculan al cambiar configuración, por lo que no reutilizan resultados de otra regla. El proceso local comparte el caché entre sesiones; para uso multiusuario se requiere revisar aislamiento y autenticación antes de desplegar.
 
-No se envían datos a servicios externos ni se registran nombres, documentos o CUIL. Se desactiva telemetría de Streamlit y se escucha solo en 127.0.0.1. Los identificadores personales están ocultos en vistas generales y en detalles hasta habilitación explícita. Las descargas usan punto y coma, coma decimal y UTF-8 con BOM. Se neutralizan textos iniciados por caracteres de fórmula, incluso después de espacios. Una hoja CSV no puede imponer el tipo de identificador al abrirse en Excel: importarla como texto para conservar ceros iniciales.
+El procesamiento de Excel y los cálculos se realizan localmente. Al usar el chat se envían a OpenAI las preguntas minimizadas y los resultados necesarios, según la sección Chat analítico; las filas de detalle no se envían. Se desactiva telemetría de Streamlit y se escucha inicialmente en 127.0.0.1. Los identificadores personales requieren permiso del servidor y habilitación explícita en el detalle. Las descargas usan punto y coma, coma decimal y UTF-8 con BOM. Se neutralizan textos iniciados por caracteres de fórmula, incluso después de espacios. Una hoja CSV no puede imponer el tipo de identificador al abrirse en Excel: importarla como texto para conservar ceros iniciales.
 
 ## Verificación
 

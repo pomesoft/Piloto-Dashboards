@@ -26,8 +26,7 @@ VIEWS=pd.DataFrame([
 ],columns=['Vista','Para qué se usa'])
 
 def management_help():
-    with st.expander('Preguntas que responde el dashboard'):
-        st.table(QUESTIONS,alt='Cinco preguntas de gestión y las vistas donde consultarlas')
+    st.toggle('Preguntas que responde el dashboard',key='show_management_questions')
     with st.expander('Detalle de las vistas'):
         st.table(VIEWS,alt='Opciones de navegación y utilidad de cada vista')
 

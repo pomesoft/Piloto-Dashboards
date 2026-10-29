@@ -2,7 +2,7 @@
 
 ## Chat analítico
 
-El panel **Consultar los datos**, al pie del área principal, permite consultar en
+El botón flotante **Conversá con tus datos**, siempre abajo a la derecha, abre el chat para consultar en
 español las fuentes cargadas. Usa LangChain `create_agent` y OpenAI Responses con
 `gpt-5.5` por defecto. Las funciones del servidor realizan los cálculos con las
 métricas existentes; no se ejecuta SQL ni código generado. El chat no modifica
@@ -22,6 +22,17 @@ gráfico no modifican los indicadores ni se heredan como filtros globales.
 Reemplazar archivos, filtros, permisos o reglas inicia una conversación nueva.
 El historial y las referencias personales viven solo en la sesión, vencen a los
 30 minutos de inactividad y se pueden borrar con **Nueva conversación**.
+
+El chat admite **5 preguntas por navegador**, sin reinicio diario. El contador se
+guarda en `localStorage` bajo `piloto-dashboard.chat.questions.v1`, sin preguntas
+ni datos personales, y persiste al recargar, cerrar o volver a abrir el sitio.
+Cada envío consume una pregunta, incluyendo aclaraciones, denegaciones y errores.
+La reserva se persiste antes de llamar a OpenAI y se sincroniza entre pestañas.
+Nueva conversación, filtros y cambios de archivos no reinician el cupo. Si el
+almacenamiento no está disponible, el chat queda bloqueado. Este límite depende
+del navegador y del origen del sitio; borrar el almacenamiento o usar otro
+navegador lo reinicia. Un límite por identidad resistente a esa manipulación
+requeriría persistencia de servidor.
 
 Ejemplos: “¿Cuántos préstamos del plan 106 tenemos colocados?”, “¿Qué capital
 colocamos por plan este mes?”, “¿Cómo evolucionó el capital colocado respecto del

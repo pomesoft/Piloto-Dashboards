@@ -9,6 +9,58 @@ from .analytics_context import build_context, context_signature
 from .chat_config import read_config
 from .query_service import QueryService
 from .presentation import fmt
+from .chat_quota import LIMIT, browser_quota, reserve_question, take_reserved_question
+
+
+def floating_chat():
+    """Acceso persistente; estilos limitados al botón y su panel de chat."""
+    st.html('''<style>
+    .st-key-chat_launcher {
+        position: fixed;
+        right: max(24px, env(safe-area-inset-right));
+        bottom: max(24px, env(safe-area-inset-bottom));
+        z-index: 1000;
+        width: fit-content;
+    }
+    .st-key-chat_launcher button {
+        background-color: #1565C0;
+        border-color: #1565C0;
+        color: #FFFFFF;
+        border-radius: 999px;
+        padding: 0.65rem 1rem;
+        min-height: 48px;
+        box-shadow: 0 4px 18px rgba(23, 43, 77, 0.16);
+    }
+    .st-key-chat_launcher button:hover,
+    .st-key-chat_launcher button:active,
+    .st-key-chat_launcher button[aria-expanded="true"] {
+        background-color: #0D47A1;
+        border-color: #0D47A1;
+        color: #FFFFFF;
+    }
+    .st-key-chat_launcher button:focus-visible {
+        outline: 3px solid #64B5F6;
+        outline-offset: 3px;
+    }
+    .st-key-chat_launcher button p {
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    [data-testid="stPopoverBody"]:has(.st-key-chat_panel) {
+        width: min(440px, calc(100vw - 32px));
+        max-height: min(680px, calc(100dvh - 112px));
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+    @media (max-width: 600px) {
+        .st-key-chat_launcher {
+            right: max(16px, env(safe-area-inset-right));
+            bottom: max(16px, env(safe-area-inset-bottom));
+        }
+    }
+    </style>''')
+    return st.popover('Conversá con tus datos', icon=':material/smart_toy:',
+                      help='Abrir el chatbot analítico', key='chat_launcher')
 
 
 def session_for(state, signature, ttl, now=None):
@@ -73,8 +125,19 @@ def show_chat(reports, data, periods, config, management, policy, rules):
     sources = build_context(reports, data, periods, config, management, st.session_state)
     signature = context_signature(sources, policy, rules)
     session, changed = session_for(st.session_state, signature, settings.session_ttl)
-    with st.expander('Consultar los datos', expanded=False):
+    quota = browser_quota(st.session_state)
+    reserved_question = take_reserved_question(st.session_state, quota, signature)
+    with floating_chat(), st.container(key='chat_panel'):
+        st.subheader('Conversá con tus datos')
         st.caption('Consultas en español · Solo lectura · Usa los filtros activos de cada fuente')
+        if quota.get('error'):
+            st.warning('No se pudo acceder al almacenamiento local. Habilítalo en tu navegador para usar el chat.')
+        elif not quota['ready']:
+            st.caption('Verificando preguntas disponibles…')
+        elif quota['used'] >= LIMIT:
+            st.info('Alcanzaste el límite de 5 preguntas en este navegador.')
+        else:
+            st.caption(f'Preguntas disponibles: {LIMIT-quota["used"]} de {LIMIT}.')
         if changed:
             st.info('Cambió el alcance de los datos. Se inició una conversación para los filtros y archivos actuales.')
         if st.button('Nueva conversación', key='chat_clear'):
@@ -94,8 +157,13 @@ def show_chat(reports, data, periods, config, management, policy, rules):
                     st.write(turn['clarification'])
                 for result in turn['results']:
                     render_result(result)
-        question = st.chat_input('Ej.: ¿Cuántos préstamos del plan 106 tenemos colocados?',
-                                 key='analytics_question', disabled=not bool(settings.api_key), max_chars=2000)
+        submitted = st.chat_input('Ej.: ¿Cuántos préstamos del plan 106 tenemos colocados?',
+                                 key='analytics_question', disabled=not bool(settings.api_key) or not quota['ready'] or bool(quota.get('error')) or quota['used'] >= LIMIT or bool(st.session_state.get('_chat_pending')), max_chars=2000)
+        if submitted:
+            if reserve_question(st.session_state, quota, submitted, signature):
+                st.rerun()
+            return
+        question = reserved_question
         if not question:
             return
         session['touched'] = time.monotonic()

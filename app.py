@@ -3,6 +3,7 @@ import json
 from contextlib import nullcontext
 from hashlib import sha256
 from io import BytesIO
+from pathlib import Path
 from zipfile import ZipFile,ZIP_DEFLATED
 from datetime import date
 from datetime import datetime
@@ -40,6 +41,7 @@ def reset():
         if k.startswith('f_') or k.endswith('_segment'):
             del st.session_state[k]
 
+st.sidebar.image(str(Path(__file__).resolve().parent/'assets'/'logoSM.png'),width=200,alt='SystemMaster')
 st.sidebar.title('Navegación')
 page=st.sidebar.radio('Ir a',PAGES,key='navigation',label_visibility='collapsed')
 tolerance,am,bm=quality_configuration(page)
@@ -114,6 +116,9 @@ def ready(kind):
         st.info('Declara el corte de cartera. Puedes revisar su calidad y sus registros mientras tanto.')
         return False
     return True
+
+show_chat(reports,all_data,periods,config,management,access_policy,
+          {'tolerance':tolerance,'anulado':am,'bonif':bm})
 
 if page=='Resumen':
     st.subheader('Situación de las fuentes cargadas')
@@ -241,6 +246,3 @@ elif page=='Diccionario de métricas':
 
 elif page=='Detalle de Universo':
     show_universe(reports,names,config,views,periods,management)
-
-show_chat(reports,all_data,periods,config,management,access_policy,
-          {'tolerance':tolerance,'anulado':am,'bonif':bm})

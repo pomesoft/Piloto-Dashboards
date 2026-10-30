@@ -16,7 +16,7 @@ from .presentation import cards,table,fmt
 def cached_management(content,name,kind,session_id='legacy'):
     return read_management(content,name,kind)
 
-def load_management(tolerance,policy=None):
+def load_management(tolerance,policy=None,zip_sources=None):
     sources={}
     with st.expander('Reportes gerenciales y proyección',expanded=False):
         st.caption('Fuentes agregadas independientes · ARS fijo')
@@ -24,6 +24,8 @@ def load_management(tolerance,policy=None):
             if policy is not None and (not policy.permits(kind) or policy.scoped):
                 continue
             upload=st.file_uploader(name,type=['xlsx'],key='upload_'+kind)
+            if upload is None:
+                upload=(zip_sources or {}).get(kind)
             if upload is None:
                 continue
             try:

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 from uuid import uuid4
 import pandas as pd
 import streamlit as st
+from core.zip_upload import read_zip_reports
 from core.reader import read_report
 from core.validation import validate,reconcile,coverage
 from core.normalization import label,parse_date,safe_csv
@@ -48,12 +49,24 @@ tolerance,am,bm=quality_configuration(page)
 names={'prestamos':'Préstamos Detalle','cobranzas':'Cobranzas Detalle','cartera':'Saldo de la Cartera'}
 reports={}; config={}; all_data={}; views={}; periods={}; issues={}; controls={}; scopes={}
 with st.sidebar.expander('Carga de archivos y filtros',expanded=False):
+    zip_upload=st.file_uploader('Adjuntar Todo',type=['zip'],key='upload_all',help='Adjunta un ZIP con los siete reportes Excel. Se reconocen por el comienzo del nombre.')
+    zip_sources={}
+    if zip_upload is not None:
+        try:
+            zip_sources,zip_messages=read_zip_reports(zip_upload.getvalue())
+            for message in zip_messages:
+                st.warning(message)
+            st.caption(f'ZIP: {len(zip_sources)} reportes reconocidos. Los archivos individuales tienen prioridad.')
+        except Exception as exc:
+            st.error(f'No se pudo abrir el ZIP: {exc}')
     st.caption('Archivos XLSX · Moneda: ARS fijo')
     st.button('Restablecer filtros',on_click=reset,key='reset_filters')
     for kind,name in names.items():
         if not access_policy.permits(kind):
             continue
         upload=st.file_uploader(name,type=['xlsx'],key='upload_'+kind)
+        if upload is None:
+            upload=zip_sources.get(kind)
         if upload is None:
             continue
         try:
@@ -97,7 +110,7 @@ with st.sidebar.expander('Carga de archivos y filtros',expanded=False):
             st.error(f'{name}: no se pudo procesar. {type(exc).__name__}: {exc}')
             reports.pop(kind,None)
 
-    management=load_management(tolerance,access_policy)
+    management=load_management(tolerance,access_policy,zip_sources)
 
 with st.sidebar:
     management_help()
